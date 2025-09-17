@@ -1,5 +1,7 @@
-import { type User, type InsertUser, type Document, type InsertDocument, type Conversation, type InsertConversation, type SimplifiedClause } from "@shared/schema";
+import { type User, type InsertUser, type Document, type InsertDocument, type Conversation, type InsertConversation, type SimplifiedClause, users, documents, conversations } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -106,4 +108,81 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database storage implementation
+export class DatabaseStorage implements IStorage {
+  // User methods
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  // Document methods
+  async getDocument(id: string): Promise<Document | undefined> {
+    const [document] = await db.select().from(documents).where(eq(documents.id, id));
+    return document || undefined;
+  }
+
+  async createDocument(insertDocument: InsertDocument): Promise<Document> {
+    const [document] = await db
+      .insert(documents)
+      .values({
+        ...insertDocument,
+        userId: insertDocument.userId ?? null,
+        uploadedAt: new Date(),
+        processedAt: null,
+        status: "uploaded"
+      })
+      .returning();
+    return document;
+  }
+
+  async updateDocument(id: string, updates: Partial<Document>): Promise<Document | undefined> {
+    const [document] = await db
+      .update(documents)
+      .set(updates)
+      .where(eq(documents.id, id))
+      .returning();
+    return document || undefined;
+  }
+
+  async getUserDocuments(userId: string): Promise<Document[]> {
+    return await db.select().from(documents).where(eq(documents.userId, userId));
+  }
+
+  // Conversation methods
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conversation || undefined;
+  }
+
+  async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        ...insertConversation,
+        language: insertConversation.language ?? null,
+        createdAt: new Date()
+      })
+      .returning();
+    return conversation;
+  }
+
+  async getDocumentConversations(documentId: string): Promise<Conversation[]> {
+    return await db.select().from(conversations).where(eq(conversations.documentId, documentId));
+  }
+}
+
+export const storage = new DatabaseStorage();
