@@ -1,0 +1,76 @@
+You are to build a Generative AI Legal Document Simplification System, title “Breaking Clause - Better Read Saul ” and Tagline: “now you actually know what you’re signing.” with frontend, backend, MCP server, AI integration, and vector search. The project should be production-quality in UI/UX design because user experience has high evaluation weightage. The UI should look professional, modern, and interactive - with smooth animations and clean typography.
+
+🌐 Modules to Implement
+1. Frontend (React + Next.js + Tailwind)
+•	Build a Next.js frontend styled with TailwindCSS + Framer Motion for animations.
+•	The design should be professional and minimal, with:
+o	Document upload (PDF, DOCX).
+o	Chat/Q&A interface (user asks questions about uploaded document).
+o	Simplified summary display (with colored cards for each clause).
+o	Language toggle dropdown → Hindi, English, Tamil, Bengali, etc.
+o	Voice output button → Plays AI-generated audio.
+•	Animations & UX:
+o	Smooth hover effects.
+o	File upload with drag-and-drop + animated progress bar.
+o	Summaries fade in with motion.
+o	Q&A answers expand in collapsible cards.
+•	Demo Goal: User uploads a contract → simplified summary appears → user asks a question → gets simplified answer in chosen language → can play audio output.
+
+2. Backend (FastAPI or Node.js Express)
+•	Use FastAPI (Python) for REST APIs (since it integrates easily with AI services).
+•	Implement endpoints:
+o	/api/simplify → Calls Gemini Pro → returns simplified clauses.
+o	/api/qa → Accepts user query → retrieves clause embeddings → uses Gemini for Q&A.
+o	/api/translate → Uses Cloud Translation API → translates simplified outputs.
+o	/api/tts → Calls Cloud TTS → returns audio file (MP3).
+•	Handle file uploads (PDF/DOCX), parse them using PyMuPDF/pdfplumber (if text-based) or Document AI API (if scanned).
+•	Store embeddings in Pinecone (external service).
+
+3. MCP Server (Agent Orchestration)
+•	Create an MCP server (Node.js) to orchestrate agents.
+•	Agents to build:
+o	Doc Simplifier Agent → Uses Gemini Pro for plain-language rewriting.
+o	Q&A Agent → Retrieves relevant section (from embeddings in Pinecone) + answers via Gemini.
+o	Translation Agent → Calls Cloud Translation API.
+o	TTS Agent → Calls Cloud Text-to-Speech.
+•	MCP server routes requests from FastAPI → correct agent → returns response.
+•	Include logging & error handling so every step is transparent.
+
+4. AI Integration (Google Cloud APIs)
+Gemini 1.5 Pro → For full-document simplification + reasoning.
+Gemini 1.5 Flash → For clause-by-clause real-time Q&A.
+Cloud Translation API → For multilingual outputs.
+Cloud Text-to-Speech → Generate natural voice outputs.
+Document AI (optional, for scanned docs).
+
+5. Vector Search (External + Replit Integration)
+•	Integrate Pinecone (free tier) for semantic search.
+•	Workflow:
+o	Extract text → break into clauses → create embeddings.
+o	Store embeddings in Pinecone.
+o	On Q&A → retrieve relevant clauses → pass to Gemini for contextual answer.
+•	Demo Goal: User asks “What’s the penalty clause?” → system highlights clause + gives explanation.
+
+🛠 Tech Stack
+•	Frontend: React, Next.js, TailwindCSS, Framer Motion.
+•	Backend: FastAPI (Python).
+•	MCP Server: Node.js (ADK Agents).
+•	AI Models: Gemini Pro, Gemini Flash, Gemini Mini.
+•	Google Cloud APIs: Document AI, Vertex AI Search, Translation API, Cloud TTS.
+•	Database: Firestore (mocked if needed).
+•	Vector DB: Pinecone.
+•	Deployment: Replit (prototype), Cloud Run (future).
+🎯 Expectations for Replit Build
+•	High-quality UI/UX: professional fonts, soft pastel colors, card-based layouts, animations.
+•	Interactive flow: user can upload → view simplified doc → chat Q&A → toggle language → play audio.
+•	Functional prototype: at least 2–3 working endpoints (simplify, Q&A, translate).
+•	Agentic design: show MCP agents collaborating (Doc Simplifier → Translator → TTS).
+🔑 Demo Flow (for Hackathon)
+1.	User uploads loan agreement PDF.
+2.	Backend parses doc, sends to Simplification Agent → simplified version shown.
+3.	User asks: “What if I miss 2 EMIs?”
+4.	Q&A Agent → retrieves clause (Pinecone) → Gemini explains simply.
+5.	Translation Agent → outputs Hindi.
+6.	TTS Agent → plays Hindi audio.
+⚡ Final Note: Prioritize UI polish + working AI calls. Even if all backend is mocked for demo, the UX should feel smooth and real.
+
