@@ -1,13 +1,13 @@
 [build]
-  # Build command for the frontend
-  command = "npm install && npm run build"
+  # Build command for the frontend only
+  command = "cd client && npm install && npm run build"
   
   # Directory where the built files will be located
-  publish = "dist/public"
+  publish = "client/dist"
 
 [build.environment]
   # Node.js version
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
   
   # Build environment variables
   NODE_ENV = "production"
