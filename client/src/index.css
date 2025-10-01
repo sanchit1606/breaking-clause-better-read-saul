@@ -350,20 +350,27 @@
   justify-content: center;
   width: 25%;
   height: 100%;
-  color: whitesmoke;
+  color: #1e40af;
   font-size: 24px;
   text-decoration: none;
   transition: 0.25s;
 }
 
 .card-small .social-link svg {
-  text-shadow: 1px 1px rgba(31, 74, 121, 0.7);
+  text-shadow: 1px 1px rgba(255, 255, 255, 0.8);
   transform: scale(1);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .card-small .social-link:hover {
-  background-color: rgba(249, 244, 255, 0.774);
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #1d4ed8;
   animation: bounce_613 0.4s linear;
+}
+
+.card-small .social-link:hover svg {
+  filter: drop-shadow(0 2px 8px rgba(59, 130, 246, 0.4));
+  transform: scale(1.1);
 }
 
 @keyframes bounce_613 {
