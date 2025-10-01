@@ -1,7 +1,6 @@
-import { type User, type InsertUser, type Document, type InsertDocument, type Conversation, type InsertConversation, type SimplifiedClause, users, documents, conversations } from "@shared/schema";
+import { type User, type InsertUser, type Document, type InsertDocument, type Conversation, type InsertConversation, type SimplifiedClause } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -108,80 +107,74 @@ export class MemStorage implements IStorage {
   }
 }
 
-// Database storage implementation
+// Firestore storage implementation
 export class DatabaseStorage implements IStorage {
-  // User methods
+  // User methods - Note: User management not implemented in Firestore service yet
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    // TODO: Implement user management in Firestore
+    throw new Error('User management not implemented yet');
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+    // TODO: Implement user management in Firestore
+    throw new Error('User management not implemented yet');
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return user;
+    // TODO: Implement user management in Firestore
+    throw new Error('User management not implemented yet');
   }
 
-  // Document methods
+  // Document methods - delegate to Firestore service
   async getDocument(id: string): Promise<Document | undefined> {
-    const [document] = await db.select().from(documents).where(eq(documents.id, id));
-    return document || undefined;
+    return await db.getDocument(id);
   }
 
   async createDocument(insertDocument: InsertDocument): Promise<Document> {
-    const [document] = await db
-      .insert(documents)
-      .values({
-        ...insertDocument,
-        userId: insertDocument.userId ?? null,
-        uploadedAt: new Date(),
-        processedAt: null,
-        status: "uploaded"
-      })
-      .returning();
-    return document;
+    const documentData = {
+      fileName: insertDocument.fileName,
+      originalName: insertDocument.originalName,
+      contentType: insertDocument.contentType,
+      size: insertDocument.size,
+      originalText: insertDocument.originalText,
+      status: insertDocument.status || 'uploaded',
+      userId: insertDocument.userId,
+      gcsDocumentId: insertDocument.gcsDocumentId,
+      uploadedAt: new Date(),
+      processedAt: insertDocument.processedAt,
+      error: insertDocument.error
+    };
+    
+    return await db.createDocument(documentData);
   }
 
   async updateDocument(id: string, updates: Partial<Document>): Promise<Document | undefined> {
-    const [document] = await db
-      .update(documents)
-      .set(updates)
-      .where(eq(documents.id, id))
-      .returning();
-    return document || undefined;
+    return await db.updateDocument(id, updates);
   }
 
   async getUserDocuments(userId: string): Promise<Document[]> {
-    return await db.select().from(documents).where(eq(documents.userId, userId));
+    return await db.getUserDocuments(userId);
   }
 
-  // Conversation methods
+  // Conversation methods - delegate to Firestore service
   async getConversation(id: string): Promise<Conversation | undefined> {
-    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
-    return conversation || undefined;
+    return await db.getConversation(id);
   }
 
   async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
-    const [conversation] = await db
-      .insert(conversations)
-      .values({
-        ...insertConversation,
-        language: insertConversation.language ?? null,
-        createdAt: new Date()
-      })
-      .returning();
-    return conversation;
+    const conversationData = {
+      documentId: insertConversation.documentId,
+      question: insertConversation.question,
+      answer: insertConversation.answer,
+      language: insertConversation.language,
+      createdAt: new Date()
+    };
+    
+    return await db.createConversation(conversationData);
   }
 
   async getDocumentConversations(documentId: string): Promise<Conversation[]> {
-    return await db.select().from(conversations).where(eq(conversations.documentId, documentId));
+    return await db.getDocumentConversations(documentId);
   }
 }
 

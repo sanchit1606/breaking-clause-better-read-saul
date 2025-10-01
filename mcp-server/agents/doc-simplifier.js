@@ -5,6 +5,7 @@ class DocSimplifierAgent {
     this.name = 'Doc Simplifier';
     this.status = 'ready';
     this.lastActivity = null;
+    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5000';
   }
 
   getName() {
@@ -19,15 +20,19 @@ class DocSimplifierAgent {
     return this.lastActivity;
   }
 
-  async execute({ text, language = 'en' }) {
+  async execute({ text, language = 'en', documentId = null }) {
     try {
       this.status = 'active';
       this.lastActivity = new Date().toISOString();
       
       console.log(`Simplifying document (${text.length} characters)...`);
       
-      // Mock simplification logic
-      // In production, this would call Gemini API
+      // If documentId is provided, use the backend API
+      if (documentId) {
+        return await this.simplifyViaAPI(documentId, language);
+      }
+      
+      // Otherwise, use mock simplification for direct text input
       const mockClauses = this.generateMockClauses(text);
       
       this.status = 'ready';
@@ -42,6 +47,29 @@ class DocSimplifierAgent {
       this.status = 'error';
       console.error('Doc Simplifier error:', error);
       throw new Error(`Document simplification failed: ${error.message}`);
+    }
+  }
+
+  async simplifyViaAPI(documentId, language) {
+    try {
+      const response = await axios.post(`${this.apiBaseUrl}/api/simplify`, {
+        documentId: documentId
+      });
+
+      if (response.data.clauses) {
+        this.status = 'ready';
+        return {
+          clauses: response.data.clauses,
+          language: language,
+          source: 'api'
+        };
+      } else {
+        throw new Error('Invalid response from API');
+      }
+    } catch (error) {
+      console.error('API call failed:', error.message);
+      // Fallback to mock data
+      return this.generateMockClauses('Document processing failed, using mock data');
     }
   }
 

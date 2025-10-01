@@ -5,6 +5,7 @@ class QAAgent {
     this.name = 'Q&A Agent';
     this.status = 'ready';
     this.lastActivity = null;
+    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5000';
   }
 
   getName() {
@@ -19,15 +20,19 @@ class QAAgent {
     return this.lastActivity;
   }
 
-  async execute({ question, documentText, language = 'en' }) {
+  async execute({ question, documentText, language = 'en', documentId = null }) {
     try {
       this.status = 'active';
       this.lastActivity = new Date().toISOString();
       
       console.log(`Processing Q&A: "${question}"`);
       
-      // Mock Q&A logic
-      // In production, this would use Gemini and vector search
+      // If documentId is provided, use the backend API
+      if (documentId) {
+        return await this.qaViaAPI(documentId, question, language);
+      }
+      
+      // Otherwise, use mock Q&A for direct text input
       const answer = this.generateMockAnswer(question, documentText);
       const relevantClauses = this.findRelevantClauses(question);
       
@@ -44,6 +49,40 @@ class QAAgent {
       this.status = 'error';
       console.error('Q&A Agent error:', error);
       throw new Error(`Q&A processing failed: ${error.message}`);
+    }
+  }
+
+  async qaViaAPI(documentId, question, language) {
+    try {
+      const response = await axios.post(`${this.apiBaseUrl}/api/qa`, {
+        documentId: documentId,
+        question: question
+      });
+
+      if (response.data.answer) {
+        this.status = 'ready';
+        return {
+          question: question,
+          answer: response.data.answer,
+          relevantClauses: response.data.relevantClauses || [],
+          confidence: 0.9,
+          language: language,
+          source: 'api'
+        };
+      } else {
+        throw new Error('Invalid response from API');
+      }
+    } catch (error) {
+      console.error('API call failed:', error.message);
+      // Fallback to mock data
+      return {
+        question: question,
+        answer: this.generateMockAnswer(question, 'Document processing failed'),
+        relevantClauses: [],
+        confidence: 0.5,
+        language: language,
+        source: 'fallback'
+      };
     }
   }
 

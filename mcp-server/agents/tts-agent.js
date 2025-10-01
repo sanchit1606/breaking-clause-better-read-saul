@@ -5,6 +5,7 @@ class TTSAgent {
     this.name = 'TTS Agent';
     this.status = 'ready';
     this.lastActivity = null;
+    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5000';
   }
 
   getName() {
@@ -26,8 +27,30 @@ class TTSAgent {
       
       console.log(`Generating TTS for ${text.length} characters in ${language}...`);
       
-      // Mock TTS generation
-      // In production, this would use Google Cloud Text-to-Speech API
+      // Try API first, fallback to mock
+      try {
+        const response = await axios.post(`${this.apiBaseUrl}/api/tts`, {
+          text: text,
+          language: language
+        });
+
+        if (response.data.audioUrl) {
+          this.status = 'ready';
+          return {
+            text,
+            language,
+            voice,
+            audioUrl: response.data.audioUrl,
+            duration: Math.ceil(text.length / 10),
+            format: 'mp3',
+            source: 'api'
+          };
+        }
+      } catch (apiError) {
+        console.log('API TTS failed, using mock TTS');
+      }
+      
+      // Fallback to mock TTS
       const audioUrl = this.generateMockAudioUrl(text, language);
       
       this.status = 'ready';
@@ -38,7 +61,8 @@ class TTSAgent {
         voice,
         audioUrl,
         duration: Math.ceil(text.length / 10), // Mock duration in seconds
-        format: 'mp3'
+        format: 'mp3',
+        source: 'mock'
       };
     } catch (error) {
       this.status = 'error';

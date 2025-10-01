@@ -5,6 +5,7 @@ class TranslationAgent {
     this.name = 'Translation Agent';
     this.status = 'ready';
     this.lastActivity = null;
+    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5000';
     
     // Language mappings
     this.languages = {
@@ -36,8 +37,29 @@ class TranslationAgent {
       
       console.log(`Translating to ${this.languages[targetLanguage] || targetLanguage}...`);
       
-      // Mock translation logic
-      // In production, this would use Google Translate API or similar
+      // Try API first, fallback to mock
+      try {
+        const response = await axios.post(`${this.apiBaseUrl}/api/translate`, {
+          text: text,
+          targetLanguage: targetLanguage
+        });
+
+        if (response.data.translatedText) {
+          this.status = 'ready';
+          return {
+            originalText: text,
+            translatedText: response.data.translatedText,
+            sourceLanguage: 'en',
+            targetLanguage,
+            confidence: 0.95,
+            source: 'api'
+          };
+        }
+      } catch (apiError) {
+        console.log('API translation failed, using mock translation');
+      }
+      
+      // Fallback to mock translation
       const translatedText = this.generateMockTranslation(text, targetLanguage);
       
       this.status = 'ready';
@@ -47,7 +69,8 @@ class TranslationAgent {
         translatedText,
         sourceLanguage: 'en',
         targetLanguage,
-        confidence: 0.92
+        confidence: 0.92,
+        source: 'mock'
       };
     } catch (error) {
       this.status = 'error';

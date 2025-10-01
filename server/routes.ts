@@ -2,10 +2,17 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
-import { storage } from "./storage";
-import { simplifyDocumentWithGemini, askQuestionWithGemini } from "./services/gemini";
+import { firestoreEnhancedStorage } from "./services/firestore-enhanced-storage";
+import { 
+  simplifyDocumentWithGemini, 
+  askQuestionWithGemini, 
+  translateTextWithGemini, 
+  generateTTSWithGemini,
+  extractKeyTermsWithGemini,
+  generateDocumentSummaryWithGemini
+} from "./services/gemini";
 import { parseDocument } from "./services/document-parser";
-import { searchSimilarClauses } from "./services/vector-search";
+import { searchSimilarClauses, createEmbeddings } from "./services/vector-search";
 import { insertDocumentSchema, insertConversationSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -26,9 +33,12 @@ const upload = multer({
       'application/msword'
     ];
     
+    console.log(`File upload attempt: ${file.originalname}, MIME type: ${file.mimetype}`);
+    
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
+      console.log(`Rejected file type: ${file.mimetype}`);
       cb(new Error('Invalid file type. Only PDF and DOCX files are allowed.'));
     }
   }
@@ -62,20 +72,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const document = await storage.createDocument({
-        userId: null, // For now, no user system
-        fileName: req.file.originalname,
-        originalText: null,
-        simplifiedClauses: null,
-        embeddings: null,
-      });
+      // Read file buffer
+      const fs = await import('fs/promises');
+      const fileBuffer = await fs.readFile(req.file.path);
+
+      let documentId: string;
+      let metadata: any;
+      let storageType: string;
+
+      try {
+        // Try to upload to GCS and create document record
+        const result = await firestoreEnhancedStorage.uploadDocumentFile(
+          fileBuffer,
+          req.file.originalname,
+          req.file.mimetype
+        );
+        documentId = result.documentId;
+        metadata = result.metadata;
+        storageType = "Google Cloud Storage";
+      } catch (gcsError) {
+        console.log("GCS upload failed, falling back to local storage:", gcsError.message);
+        
+        // Fallback to local storage
+        const { v4: uuidv4 } = await import('uuid');
+        const path = await import('path');
+        
+        // Create document ID
+        documentId = uuidv4();
+        
+        // Store file locally
+        const localFileName = `${documentId}${path.extname(req.file.originalname)}`;
+        const localFilePath = path.join('uploads', localFileName);
+        
+        // Ensure uploads directory exists
+        await fs.mkdir('uploads', { recursive: true });
+        
+        // Copy file to permanent location
+        await fs.copyFile(req.file.path, localFilePath);
+        
+        // Create document metadata in Firestore only
+        const documentData = {
+          fileName: localFileName,
+          originalName: req.file.originalname,
+          contentType: req.file.mimetype,
+          size: fileBuffer.length,
+          uploadedAt: new Date(),
+          status: 'uploaded' as const,
+          gcsDocumentId: localFileName // Use local filename as reference
+        };
+        
+        metadata = await firestoreEnhancedStorage.createDocument(documentData);
+        storageType = "Local Storage";
+      }
+
+      // Clean up local temp file
+      await fs.unlink(req.file.path);
 
       // Start document processing in the background
-      processDocumentAsync(req.file.path, document.id);
+      processDocumentAsync(metadata.gcsDocumentId || metadata.id, documentId);
 
       res.json({
-        documentId: document.id,
-        message: "Document uploaded successfully"
+        documentId: documentId,
+        message: `Document uploaded successfully to ${storageType} and Firestore`
       });
     } catch (error) {
       console.error("Upload error:", error);
@@ -88,7 +146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { documentId } = simplifyRequestSchema.parse(req.body);
       
-      const document = await storage.getDocument(documentId);
+      const document = await firestoreEnhancedStorage.getDocument(documentId);
       if (!document) {
         return res.status(404).json({ message: "Document not found" });
       }
@@ -99,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const simplifiedClauses = await simplifyDocumentWithGemini(document.originalText);
       
-      await storage.updateDocument(documentId, {
+      await firestoreEnhancedStorage.updateDocument(documentId, {
         simplifiedClauses: simplifiedClauses,
         processedAt: new Date(),
         status: "completed"
@@ -117,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { documentId, question } = qaRequestSchema.parse(req.body);
       
-      const document = await storage.getDocument(documentId);
+      const document = await firestoreEnhancedStorage.getDocument(documentId);
       if (!document || !document.originalText) {
         return res.status(404).json({ message: "Document not found or not processed" });
       }
@@ -129,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const answer = await askQuestionWithGemini(question, document.originalText, relevantClauses);
 
       // Save conversation
-      await storage.createConversation({
+      await firestoreEnhancedStorage.createConversation({
         documentId,
         question,
         answer,
@@ -151,8 +209,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { text, targetLanguage } = translateRequestSchema.parse(req.body);
       
-      // Mock translation for now
-      const translatedText = `[${targetLanguage.toUpperCase()}] ${text}`;
+      const translatedText = await translateTextWithGemini(text, targetLanguage);
       
       res.json({
         translatedText,
@@ -169,8 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { text, language = "en" } = ttsRequestSchema.parse(req.body);
       
-      // Mock TTS - return a placeholder audio URL
-      const audioUrl = `data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+HyvGcVGRw`;
+      const audioUrl = await generateTTSWithGemini(text, language);
       
       res.json({ audioUrl });
     } catch (error) {
@@ -182,7 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get document endpoint
   app.get("/api/documents/:id/simplified", async (req, res) => {
     try {
-      const document = await storage.getDocument(req.params.id);
+      const document = await firestoreEnhancedStorage.getDocument(req.params.id);
       if (!document) {
         return res.status(404).json({ message: "Document not found" });
       }
@@ -195,6 +251,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Get document error:", error);
       res.status(500).json({ message: "Failed to get document" });
+    }
+  });
+
+  // Document summary endpoint
+  app.get("/api/documents/:id/summary", async (req, res) => {
+    try {
+      const document = await firestoreEnhancedStorage.getDocument(req.params.id);
+      if (!document || !document.originalText) {
+        return res.status(404).json({ message: "Document not found or not processed" });
+      }
+
+      const summary = await generateDocumentSummaryWithGemini(document.originalText);
+      
+      res.json({ summary });
+    } catch (error) {
+      console.error("Document summary error:", error);
+      res.status(500).json({ message: "Failed to generate summary" });
+    }
+  });
+
+  // Key terms extraction endpoint
+  app.get("/api/documents/:id/terms", async (req, res) => {
+    try {
+      const document = await firestoreEnhancedStorage.getDocument(req.params.id);
+      if (!document || !document.originalText) {
+        return res.status(404).json({ message: "Document not found or not processed" });
+      }
+
+      const terms = await extractKeyTermsWithGemini(document.originalText);
+      
+      res.json({ terms });
+    } catch (error) {
+      console.error("Key terms extraction error:", error);
+      res.status(500).json({ message: "Failed to extract key terms" });
     }
   });
 
@@ -220,17 +310,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
 }
 
 // Background document processing
-async function processDocumentAsync(filePath: string, documentId: string) {
+async function processDocumentAsync(gcsDocumentId: string, dbDocumentId: string) {
   try {
-    const extractedText = await parseDocument(filePath);
-    await storage.updateDocument(documentId, {
-      originalText: extractedText,
-      status: "processed"
+    console.log(`Processing document ${dbDocumentId}...`);
+    
+    // Step 1: Get document file (from GCS or local storage)
+    let fileBuffer: Buffer;
+    let tempPath: string;
+    
+    try {
+      // Try to download from GCS first
+      fileBuffer = await firestoreEnhancedStorage.downloadDocumentFile(dbDocumentId);
+      if (!fileBuffer) {
+        throw new Error('Failed to download document from GCS');
+      }
+      
+      // Create a temporary file for parsing with proper extension
+      const fs = await import('fs/promises');
+      const fileExtension = path.extname(gcsDocumentId) || '.pdf'; // Default to PDF if no extension
+      tempPath = `uploads/temp-${dbDocumentId}${fileExtension}`;
+      await fs.writeFile(tempPath, fileBuffer);
+    } catch (gcsError) {
+      console.log("GCS download failed, trying local storage:", gcsError.message);
+      
+      // Fallback to local storage
+      const fs = await import('fs/promises');
+      const localFilePath = path.join('uploads', gcsDocumentId);
+      
+      try {
+        fileBuffer = await fs.readFile(localFilePath);
+        // Create a temporary file with proper extension for parsing
+        const fileExtension = path.extname(gcsDocumentId) || '.pdf'; // Default to PDF if no extension
+        const tempFileName = `temp-${dbDocumentId}${fileExtension}`;
+        tempPath = path.join('uploads', tempFileName);
+        await fs.writeFile(tempPath, fileBuffer);
+      } catch (localError) {
+        throw new Error(`Failed to read document from both GCS and local storage: ${localError.message}`);
+      }
+    }
+    
+    const extractedText = await parseDocument(tempPath);
+    await firestoreEnhancedStorage.updateDocument(dbDocumentId, {
+      status: "processing"
     });
+
+    // Step 2-4: Process document in parallel for faster results
+    console.log(`Processing document ${dbDocumentId} with AI...`);
+    const [summary, terms, simplifiedClauses] = await Promise.all([
+      generateDocumentSummaryWithGemini(extractedText),
+      extractKeyTermsWithGemini(extractedText),
+      simplifyDocumentWithGemini(extractedText)
+    ]);
+    
+    // Step 5: Create embeddings for vector search (run in background)
+    console.log(`Creating embeddings for document ${dbDocumentId}...`);
+    createEmbeddings(dbDocumentId, simplifiedClauses).catch(err => 
+      console.log('Embeddings creation failed:', err.message)
+    );
+    
+    // Step 6: Store processed results and update Firestore
+    try {
+      // Try to store in GCS first
+      await firestoreEnhancedStorage.storeProcessedResults(dbDocumentId, {
+        simplifiedClauses: simplifiedClauses,
+        summary: summary,
+        keyTerms: terms
+      });
+    } catch (gcsError) {
+      console.log("GCS storage failed, storing results in Firestore only:", gcsError.message);
+      
+      // Fallback: store results directly in Firestore document
+      await firestoreEnhancedStorage.updateDocument(dbDocumentId, {
+        status: "completed",
+        processedAt: new Date(),
+        // Store results as JSON in the document
+        simplifiedClauses: JSON.stringify(simplifiedClauses),
+        summary: summary,
+        keyTerms: JSON.stringify(terms)
+      });
+    }
+
+    // Clean up temporary file if it was created
+    if (tempPath.startsWith('uploads/temp-')) {
+      const fs = await import('fs/promises');
+      await fs.unlink(tempPath);
+    }
+
+    console.log(`Document ${dbDocumentId} processing completed successfully`);
   } catch (error) {
     console.error("Document processing error:", error);
-    await storage.updateDocument(documentId, {
-      status: "failed"
+    await firestoreEnhancedStorage.updateDocument(dbDocumentId, {
+      status: "failed",
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 }
