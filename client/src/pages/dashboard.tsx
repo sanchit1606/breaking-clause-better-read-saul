@@ -44,21 +44,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <style jsx>{`
-        .chart-bar {
-          transition: all 0.3s ease;
-        }
-        .chart-bar:hover {
-          transform: scaleY(1.05);
-        }
-        .stat-card {
-          transition: all 0.3s ease;
-        }
-        .stat-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        }
-      `}</style>
       
       {/* Header */}
       <header className="bg-blue-100 text-blue-900 border-b border-blue-200">

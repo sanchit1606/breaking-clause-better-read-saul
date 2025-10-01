@@ -372,3 +372,21 @@
   80% { transform: scale(1.2); }
   100% { transform: scale(1); }
 }
+
+/* Dashboard Chart and Card Effects */
+.chart-bar {
+  transition: all 0.3s ease;
+}
+
+.chart-bar:hover {
+  transform: scaleY(1.05);
+}
+
+.stat-card {
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
